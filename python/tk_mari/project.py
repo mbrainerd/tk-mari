@@ -94,7 +94,8 @@ class ProjectManager(object):
             raise TankError("Newly created project '%s' wasn't opened!" % name)
         
         # add metadata to the project so that we can track the context:
-        self.md_mgr.set_project_metadata(new_project, engine.context)        
+        self.md_mgr.set_project_metadata(new_project, engine.context)
+        self.md_mgr.set_project_version(new_project, 1)
         
         # update the metadata, name and version on the geometry that was
         # loaded as part of the project creation:

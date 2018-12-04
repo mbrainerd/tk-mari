@@ -116,26 +116,11 @@ class MariEngine(sgtk.platform.Engine):
         """
         Do any initialization after apps have been loaded
         """
-        if self.has_ui:
-            # create the Shotgun menu
-            tk_mari = self.import_module("tk_mari")
-            self._menu_generator = tk_mari.MenuGenerator(self)
-            self._menu_generator.create_menu()
-
-        # Update the current Mari project with the current context so that next time this project is
-        # opened, the work area changes accordingly.
-        #
-        # Note, currently this will happen every time as long as Shotgun is running so it will update
-        # any opened projects even if they were never previously opened in Shotgun...  This just adds
-        # some metadata to the project though so shouldn't be a big deal!  If it is then we should
-        # make it less automatic.
-        current_project = mari.projects.current()
-        if current_project:
-            self.log_debug("Updating the Work Area on the current project to '%s'" % self.context)
-            self.__metadata_mgr.set_project_metadata(current_project, self.context)
+        self.create_menu()
 
         # connect to Mari project events:
         mari.utils.connect(mari.projects.opened, self.__on_project_opened)
+        mari.utils.connect(mari.projects.saved, self.__on_project_saved)
 
         self._run_app_instance_commands()
 
@@ -152,7 +137,8 @@ class MariEngine(sgtk.platform.Engine):
             # destroy the menu:
             self._menu_generator.destroy_menu()
 
-        self.post_app_init()
+        self.create_menu()
+        self._run_app_instance_commands()
 
     def destroy_engine(self):
         """
@@ -166,6 +152,7 @@ class MariEngine(sgtk.platform.Engine):
 
         # disconnect from Mari project events:
         mari.utils.disconnect(mari.projects.opened, self.__on_project_opened)
+        mari.utils.disconnect(mari.projects.saved, self.__on_project_saved)
 
     @property
     def has_ui(self):
@@ -173,6 +160,13 @@ class MariEngine(sgtk.platform.Engine):
         Detect and return if mari is not running in terminal mode
         """
         return not mari.app.inTerminalMode()
+
+    def create_menu(self):
+        if self.has_ui:
+            # create the Shotgun menu
+            tk_mari = self.import_module("tk_mari")
+            self._menu_generator = tk_mari.MenuGenerator(self)
+            self._menu_generator.create_menu()
 
     #####################################################################################
     # Panel Support
@@ -409,6 +403,11 @@ class MariEngine(sgtk.platform.Engine):
             self.log_debug("Work area unchanged - the opened project is not Shotgun aware!")
             return
 
+        # for backwards compatibility
+        # set version of any project containing sgtk metadata, but no version to 1
+        if not self.__metadata_mgr.get_project_version(opened_project):
+            self.__metadata_mgr.set_project_version(opened_project, 1)
+
         # try to determine the project context from the metadata:
         ctx_entity = None
         if md.get("task_id"):
@@ -439,6 +438,35 @@ class MariEngine(sgtk.platform.Engine):
 
         # change current engine context:
         sgtk.platform.change_context(ctx)
+
+    def __on_project_saved(self, saved_project):
+        if not self.__metadata_mgr.get_metadata(saved_project):
+            # this is not an sgtk compliant project
+            return
+
+        workfiles_app = self.apps.get("tk-multi-workfiles2")
+        proj_mgr_app = self.apps.get("tk-mari-projectmanager")
+        if not workfiles_app or not proj_mgr_app:
+            self.log_error("Unable to find workfiles or projectmanager app. Not exporting msf file.")
+            return
+
+        fields = self.context.as_template_fields()
+
+        # use project name to obtain "name" field
+        project_name_template = proj_mgr_app.get_template("template_new_project_name")
+        if not project_name_template.validate(saved_project.name()):
+            # this is not an sgtk compliant project
+            return
+        fields.update(project_name_template.get_fields(saved_project.name()))
+
+        # use project metadata to get the "version" field
+        fields["version"] = self.__metadata_mgr.get_project_version(saved_project)
+
+        work_template = workfiles_app.get_template("template_work")
+        work_file_path = work_template.apply_fields(fields)
+
+        self.log_debug("Exporting mari session file to: %s" % work_file_path)
+        mari.session.exportSession(work_file_path)
 
     def _run_app_instance_commands(self):
         """
