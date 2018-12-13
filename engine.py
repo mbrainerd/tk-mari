@@ -191,6 +191,13 @@ class MariEngine(sgtk.platform.Engine):
 
         :returns: the created widget_class instance
         """
+        mari_version = mari.app.version()
+        if mari_version.major() < 4:
+            raise AttributeError("This version of Mari ({}.{}v{}) may have palette resize issues. "
+                                 "Skipping show_panel method.".format(mari_version.major(),
+                                                                      mari_version.minor(),
+                                                                      mari_version.revision()))
+
         from tank.platform.qt import QtCore, QtGui
 
         self.logger.debug("Showing pane %s - %s from %s", panel_id, title, bundle.name)
