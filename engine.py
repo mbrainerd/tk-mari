@@ -120,7 +120,7 @@ class MariEngine(sgtk.platform.Engine):
 
         # connect to Mari project events:
         mari.utils.connect(mari.projects.opened, self.__on_project_opened)
-        mari.utils.connect(mari.projects.saved, self.__on_project_saved)
+        # mari.utils.connect(mari.projects.saved, self.__on_project_saved)
 
         self._run_app_instance_commands()
 
@@ -152,7 +152,7 @@ class MariEngine(sgtk.platform.Engine):
 
         # disconnect from Mari project events:
         mari.utils.disconnect(mari.projects.opened, self.__on_project_opened)
-        mari.utils.disconnect(mari.projects.saved, self.__on_project_saved)
+        # mari.utils.disconnect(mari.projects.saved, self.__on_project_saved)
 
     @property
     def has_ui(self):
