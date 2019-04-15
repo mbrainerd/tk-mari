@@ -186,7 +186,44 @@ class GeometryManager(object):
         for geo in new_geo:
             self.initialise_new_geometry(geo, publish_path, sg_publish)
             
-        return new_geo 
+        return new_geo
+
+    def swap_geometry(self, geo, sg_publish, options):
+        """
+        Swap out an existing geometry for the new one in the path from sg_publish.
+        This enables artists to reuse the shaders, channels and layers
+        already applied to the geo on the new one.
+
+        :param geo:         The old Mari GeoEntity to be swaped out
+        :param sg_publish:  The publish from which the new geometry is to be loaded
+        :param options:     [Mari arg] - Options to be passed to the file loader when loading the geometry.  The
+                            options will default to the options that were used to load the current version if
+                            not specified.
+        :returns:           The updated GeoEntity instance
+        """
+        update_publish_records([sg_publish])
+
+        # extract the file path for the publish
+        publish_path = self.__get_publish_path(sg_publish)
+        if not publish_path or not os.path.exists(publish_path):
+            raise TankError("Publish '%s' couldn't be found on disk!" % publish_path)
+
+        # rename the geometry
+        geo_name = sg_publish.get("name")
+        geo.setName(geo_name)
+
+        # update shotgun metadata
+        self._update_geo_metadata(geo, publish_path, sg_publish)
+
+        # save the geo versions that exist now and add the one to be swapped in
+        old_version_names = geo.versionNames()
+        new_geo_version = self.add_geometry_version(geo, sg_publish, options)
+
+        for geo_version in old_version_names:
+            geo.removeVersion(geo_version)
+
+        return geo
+
     
     def add_geometry_version(self, geo, sg_publish, options):
         """
@@ -239,7 +276,28 @@ class GeometryManager(object):
 
     def initialise_new_geometry(self, geo, publish_path, sg_publish):
         """
-        Initialise a new geometry.  This sets the name and updates the Shotgun metadata.
+        Initialise a new geometry.  This sets the name and updates the Shotgun metadata
+        of a geometry and the contained versions.
+
+        :param geo:             The geometry to initialise
+        :param publish_path:    The path of the publish this geometry was loaded from
+        :param sg_publish:      The Shotgun publish record for this geometry.  This should be a Shotgun
+                                entity dictionary containing at least the entity "type" and "id".
+        """
+        self._update_geo_metadata(geo, publish_path, sg_publish)
+
+        # there should be a single version for the geo:
+        geo_versions = geo.versionList()
+        if len(geo_versions) != 1:
+            raise TankError("Invalid number of versions found for geometry "
+                            "- expected 1 but found %d!" % len(geo_versions))
+        
+        # finally, initialize the geometry version:
+        self.initialise_new_geometry_version(geo_versions[0], publish_path, sg_publish)
+
+    def _update_geo_metadata(self, geo, publish_path, sg_publish):
+        """
+        This sets the name and updates the Shotgun metadata.
 
         :param geo:             The geometry to initialise
         :param publish_path:    The path of the publish this geometry was loaded from
@@ -250,13 +308,13 @@ class GeometryManager(object):
         publish_name = sg_publish.get("name")
         scene_name = os.path.basename(publish_path).split(".")[0]
         geo_name = publish_name or scene_name
-        
+
         # look at the current name and see if it's merged or an individual entity:
         current_name = geo.name()
         if not current_name.startswith(publish_name) and not current_name.startswith(scene_name):
             # geo name should include the existing name as it's not merged!
             geo_name = "%s_%s" % (geo_name, current_name)
-            
+
         if geo_name != current_name:
             # make sure the name is unique:
             test_name = geo_name
@@ -269,25 +327,16 @@ class GeometryManager(object):
                 test_name = "%s_%d" % (geo_name, test_index)
                 test_index += 1
             geo_name = test_name
-                
+
             # set the geo name:
             if geo_name != current_name:
                 geo.setName(geo_name)
-        
+
         # set the geo metadata:
-        sg_project = sg_publish.get("project")            
+        sg_project = sg_publish.get("project")
         sg_entity = sg_publish.get("entity")
         sg_task = sg_publish.get("task")
         self.__md_mgr.set_geo_metadata(geo, sg_project, sg_entity, sg_task)
-        
-        # there should be a single version for the geo:
-        geo_versions = geo.versionList()
-        if len(geo_versions) != 1:
-            raise TankError("Invalid number of versions found for geometry "
-                            "- expected 1 but found %d!" % len(geo_versions))
-        
-        # finally, initialize the geometry version:
-        self.initialise_new_geometry_version(geo_versions[0], publish_path, sg_publish)
 
     def initialise_new_geometry_version(self, geo_version, publish_path, sg_publish):
         """
