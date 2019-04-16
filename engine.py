@@ -288,6 +288,21 @@ class MariEngine(sgtk.platform.Engine):
         """
         return self.__geometry_mgr.load_geometry(sg_publish, options, objects_to_load)
 
+    def swap_geometry(self, geo, sg_publish, options=None):
+        """
+        Swap out an existing geometry for the new one in the path from sg_publish.
+        This enables artists to reuse the shaders, channels and layers
+        already applied to the geo on the new one.
+
+        :param geo:         The old Mari GeoEntity to be swaped out
+        :param sg_publish:  The publish from which the new geometry is to be loaded
+        :param options:     [Mari arg] - Options to be passed to the file loader when loading the geometry.  The
+                            options will default to the options that were used to load the current version if
+                            not specified.
+        :returns:           The updated GeoEntity instance
+        """
+        return self.__geometry_mgr.swap_geometry(geo, sg_publish, options)
+
     def get_shotgun_info(self, mari_entity):
         """
         Get all Shotgun info stored with the specified mari entity.
